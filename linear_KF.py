@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+# Author : Abhishek Raj Dutta
+# Date :22/11/2106
+# This code merges yaw from stereo odometry and an IMU sensor to give a Kalman Filtered estimate
+
 import rospy
 import tf.transformations
 from geometry_msgs.msg import Twist

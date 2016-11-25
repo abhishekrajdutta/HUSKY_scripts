@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 
+# Author : Abhishek Raj Dutta
+# Date :22/11/2106
+# This code merges stereo odometry with IMU and command velocities to produce an estimate of the HUSKY's pose and heading
+
+
 import rospy
 import tf.transformations
 from geometry_msgs.msg import Twist
