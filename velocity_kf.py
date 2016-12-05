@@ -1,8 +1,9 @@
 
 #!/usr/bin/env python
 # Author : Abhishek Raj Dutta
-# Date :22/11/2106
-# This code merges stereo odometry with IMU and command velocities to produce an estimate of the HUSKY's pose and heading
+# Date :04/12/2106
+# This code fuses velocity data from Stereo Odometry and Command velocity messages using a kalman filter
+#Acceleration is modeled as the difference between current and command velocities
 
 
 import rospy
