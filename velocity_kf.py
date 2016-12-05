@@ -1,6 +1,6 @@
 
 #!/usr/bin/env python
-# Author : Abhishek Raj Dutta
+# Author : Abhishek Raj Dutta, Krishna Sumanth
 # Date :04/12/2106
 # This code fuses velocity data from Stereo Odometry and Command velocity messages using a kalman filter
 #Acceleration is modeled as the difference between current and command velocities
