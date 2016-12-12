@@ -29,7 +29,9 @@ i=0
 vYawCov=0.09
 ImuYawCov=0.15707963267948966
 yawCov=10
-cmd = np.array ([(0.0,0.0),(0.0,0.0)])
+cmd = np.array ([(0.0,0.0),(0.0,0.0),(0.0,0.0)])
+v = np.array ([0.0,0.0])
+vCov=10
 yaw = np.array ([0.0,0.0])
 meas = np.array ([0.0,0.0])
 inp = np.array ([0.0,0.0])
@@ -75,8 +77,8 @@ def imu_callback(msg):
 
 def getCmd(msg):
     global cmd
-    cmd[1][0] = msg.twist.linear.x
-    cmd[1][1] = msg.twist.angular.z
+    cmd[2][0] = msg.twist.linear.x
+    cmd[2][1] = msg.twist.angular.z
 
 def send():
     odomOut=Odometry()
@@ -107,7 +109,7 @@ def send():
 
 def loop(event):
     print 'Timer called at ' + str(event.current_real)
-    global i,yawImu,yawImu1,vYawViso,vYawCov,ImuYawCov,yaw,yawCov,vX,odomEKF,pred,cmd, inp
+    global i,yawImu,yawImu1,vYawViso,vYawCov,ImuYawCov,yaw,yawCov,vX,odomEKF,pred,cmd, inp,v,vCov
     if i==0:
         yawImu1=yawImu
         i=1
@@ -116,6 +118,7 @@ def loop(event):
     predYaw=yaw[0]+vYawViso*t
     predCov=yawCov + vYawCov
     inn=(yawImu-yawImu1)-predYaw
+    print (yawImu-yawImu1)*(180/3.14)
     innCov=predCov+ImuYawCov
     K=predCov*(1/innCov)
     yaw[1]=predYaw+K*inn
@@ -130,17 +133,29 @@ def loop(event):
     wConCov=0.01
 
     vMeasCov=0.002
-    wMeasCov=yawCov*f
+    wMeasCov=0.09
 
-    inp[0]=(((vConCov)**2)*meas[0]+((vMeasCov)**2)*cmd[0][0])/(((vConCov)**2)+((vMeasCov)**2))
-    inp[1]=(((wConCov)**2)*meas[1]+((wMeasCov)**2)*cmd[0][1])/(((wConCov)**2)+((wMeasCov)**2))
+    predVx=v[0]+(cmd[1][0]-cmd[0][0])
+    predCov1=vCov + vConCov
+    inn1=vX-predVx
+    innCov1=predCov1+vMeasCov
+    K1=predCov1*(1/innCov1)
+    v[1]=predVx+K1*inn1
+    vCov=(1-K1)*predCov1
+    inp[0]=v[1]
+    v[0]=v[1]
+    
 
-    if cmd[0][0]>0.000001 or cmd[0][1]>0.000001:
+    #inp[0]=(((vConCov)**2)*meas[0]+((vMeasCov)**2)*cmd[0][0])/(((vConCov)**2)+((vMeasCov)**2))
+    inp[1]=(((wConCov)**2)*meas[1]+((wMeasCov)**2)*cmd[1][1])/(((wConCov)**2)+((wMeasCov)**2))
+
+    if cmd[0][0]>0.000001 or cmd[1][0]>0.000001 or cmd[1][1]>0.000001:
     	
-    	if cmd[0][1]>0.000001:
+    	if cmd[1][1]>0.000001 :
 	       	pred[0]=-(inp[0]/inp[1])*np.sin(odomEKF[2])+(inp[0]/inp[1])*np.sin(odomEKF[2]+inp[1]*t)
 	    	pred[1]=(inp[0]/inp[1])*np.cos(odomEKF[2])-(inp[0]/inp[1])*np.cos(odomEKF[2]+inp[1]*t)
 	    	pred[2]=inp[1]*t
+    		
 
     	else:
     		pred[0]=inp[0]*t*np.cos(yaw[0])
@@ -148,13 +163,15 @@ def loop(event):
     		#pred[1]=(inp[0]/inp[1])*np.cos(odomEKF[2])-(inp[0]/inp[1])*np.cos(odomEKF[2]+inp[1]*t)
     		#pred[1]=(meas[0]/meas[1])*np.cos(odomEKF[2])-(meas[0]/meas[1])*np.cos(odomEKF[2]+meas[1]*t)
     		pred[2]=meas[1]*t
+		
 
     	odomEKF=odomEKF+pred
 
     
 
     cmd[0][0]=cmd[1][0]
-    cmd[0][1]=cmd[1][1]
+    cmd[1][0]=cmd[2][0]
+    cmd[1][1]=cmd[2][1]
 
     #print odomEKF   
     send()
