@@ -135,7 +135,7 @@ def loop(event):
     vMeasCov=0.002
     wMeasCov=0.09
 
-    predVx=v[0]+(cmd[1][0]-cmd[0][0])
+    predVx=v[0]+((cmd[1][0]-cmd[0][0])+(cmd[1][0]-v[0]))/2
     predCov1=vCov + vConCov
     inn1=vX-predVx
     innCov1=predCov1+vMeasCov
