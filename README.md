@@ -1,3 +1,1 @@
-# HUSKY_scripts
-
-Repository for fusing sensor data on the Clearpath Husky for localisation 
+Scripts for the fusion and observation of sensor data from an IMU and Visual Odometry
