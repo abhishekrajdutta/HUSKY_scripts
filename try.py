@@ -1,7 +1,9 @@
+
 #!/usr/bin/env python
-# Author : Abhishek Raj Dutta
-# Date :22/11/2106
-# This code merges stereo odometry with IMU and command velocities to produce an estimate of the HUSKY's pose and heading
+# Author : Abhishek Raj Dutta, Krishna Sumanth
+# Date :04/12/2106
+# This code fuses velocity data from Stereo Odometry and Command velocity messages using a kalman filter
+#Acceleration is modeled as the difference between current and command velocities
 
 
 import rospy
@@ -13,7 +15,7 @@ from nav_msgs.msg import Odometry
 import math
 import numpy as np
 
-pub=rospy.Publisher("/odometry/filtered/self",Odometry,queue_size=10)
+pub=rospy.Publisher('/odometry/filtered/selfie',Odometry,queue_size=10)
 br = tf.TransformBroadcaster()
 odom=Odometry()
 imu=Imu()
@@ -27,10 +29,13 @@ i=0
 vYawCov=0.09
 ImuYawCov=0.15707963267948966
 yawCov=10
-cmd = np.array ([(0.0,0.0),(0.0,0.0)])
+cmd = np.array ([(0.0,0.0),(0.0,0.0),(0.0,0.0)])
+v = np.array ([0.0,0.0])
+vCov=10
+w = np.array ([0.0,0.0])
+wCov=10
 yaw = np.array ([0.0,0.0])
-meas = np.array ([(0.0,0.0),(0.0,0.0)])
-# meas = np.array ([0.0,0.0])
+meas = np.array ([0.0,0.0])
 inp = np.array ([0.0,0.0])
 odomEKF = np.array ([0.0,0.0,0.0])
 pred = np.array ([0.0,0.0,0.0])
@@ -74,13 +79,8 @@ def imu_callback(msg):
 
 def getCmd(msg):
     global cmd
-    cmd[1][0] = msg.twist.linear.x
-    cmd[1][1] = msg.twist.angular.z
-
-def getCmd2(msg):
-    global cmd
-    cmd[1][0] = msg.linear.x
-    cmd[1][1] = msg.angular.z
+    cmd[2][0] = msg.twist.linear.x
+    cmd[2][1] = msg.twist.angular.z
 
 def send():
     odomOut=Odometry()
@@ -111,7 +111,7 @@ def send():
 
 def loop(event):
     print 'Timer called at ' + str(event.current_real)
-    global i,yawImu,yawImu1,vYawViso,vYawCov,ImuYawCov,yaw,yawCov,vX,odomEKF,pred,cmd, inp
+    global i,yawImu,yawImu1,vYawViso,vYawCov,ImuYawCov,yaw,yawCov,vX,odomEKF,pred,cmd, inp,v,vCov,w,wCov
     if i==0:
         yawImu1=yawImu
         i=1
@@ -120,6 +120,7 @@ def loop(event):
     predYaw=yaw[0]+vYawViso*t
     predCov=yawCov + vYawCov
     inn=(yawImu-yawImu1)-predYaw
+    print (yawImu-yawImu1)*(180/3.14)
     innCov=predCov+ImuYawCov
     K=predCov*(1/innCov)
     yaw[1]=predYaw+K*inn
@@ -127,47 +128,63 @@ def loop(event):
     vYaw=(yaw[1]-yaw[0])*f
     yaw[0]=yaw[1]
 
-    meas[1][0]=vX
-    meas[1][1]=vYaw
-
-    if meas[1][0]>1.0:
-        meas[1][0]=meas[0][0]
-        meas[1][1]=meas[0][1]
-
-    meas[0][0]=meas[1][0]
-    meas[0][1]=meas[1][1]
-
-
+    meas[0]=vX
+    meas[1]=vYaw
 
     vConCov=0.001
     wConCov=0.01
 
     vMeasCov=0.002
-    wMeasCov=yawCov*f
+    wMeasCov=0.09
 
-    inp[0]=(((vConCov)**2)*meas[1][0]+((vMeasCov)**2)*cmd[0][0])/(((vConCov)**2)+((vMeasCov)**2))
-    inp[1]=(((wConCov)**2)*meas[1][1]+((wMeasCov)**2)*cmd[0][1])/(((wConCov)**2)+((wMeasCov)**2))
+    predVx=v[0]+(cmd[1][0]-cmd[0][0])
+    predCov1=vCov + vConCov
+    inn1=vX-predVx
+    innCov1=predCov1+vMeasCov
+    K1=predCov1*(1/innCov1)
+    v[1]=predVx+K1*inn1
+    vCov=(1-K1)*predCov1
+    inp[0]=v[1]
+    v[0]=v[1]
 
-    if cmd[0][0]>0.000001 or cmd[0][1]>0.000001:
+    predWx=w[0]+(cmd[1][1]-cmd[0][1])
+    predCov2=wCov + wConCov
+    inn2=vYaw-predWx
+    innCov2=predCov2+wMeasCov
+    K2=predCov2*(1/innCov2)
+    w[1]=predWx+K2*inn2
+    wCov=(1-K2)*predCov2
+    inp[1]=w[1]
+    w[0]=w[1]
+    
+
+    #inp[0]=(((vConCov)**2)*meas[0]+((vMeasCov)**2)*cmd[0][0])/(((vConCov)**2)+((vMeasCov)**2))
+    #inp[1]=(((wConCov)**2)*meas[1]+((wMeasCov)**2)*cmd[1][1])/(((wConCov)**2)+((wMeasCov)**2))
+
+    if cmd[0][0]>0.000001 or cmd[1][0]>0.000001 or cmd[1][1]>0.000001 or cmd[0][1]>0.000001 :
     	
-    	if cmd[0][1]>0.000001:
+    	if cmd[1][1]>0.000001 and cmd[0][1]>0.000001:
 	       	pred[0]=-(inp[0]/inp[1])*np.sin(odomEKF[2])+(inp[0]/inp[1])*np.sin(odomEKF[2]+inp[1]*t)
 	    	pred[1]=(inp[0]/inp[1])*np.cos(odomEKF[2])-(inp[0]/inp[1])*np.cos(odomEKF[2]+inp[1]*t)
 	    	pred[2]=inp[1]*t
+    		
 
     	else:
     		pred[0]=inp[0]*t*np.cos(yaw[0])
     		pred[1]=inp[0]*t*np.sin(yaw[1])
     		#pred[1]=(inp[0]/inp[1])*np.cos(odomEKF[2])-(inp[0]/inp[1])*np.cos(odomEKF[2]+inp[1]*t)
     		#pred[1]=(meas[0]/meas[1])*np.cos(odomEKF[2])-(meas[0]/meas[1])*np.cos(odomEKF[2]+meas[1]*t)
-    		pred[2]=meas[1][1]*t
+    		pred[2]=meas[1]*t
+		
 
     	odomEKF=odomEKF+pred
 
     
 
     cmd[0][0]=cmd[1][0]
+    cmd[1][0]=cmd[2][0]
     cmd[0][1]=cmd[1][1]
+    cmd[1][1]=cmd[2][1]
 
     #print odomEKF   
     send()
@@ -177,18 +194,16 @@ def loop(event):
 
 
 def ekf():
-	rospy.init_node('ekf_node')
+	rospy.init_node('ekf_node_1')
 	rospy.Subscriber("/stereo_odometer/odometry", Odometry, viso_callback)
 	# rospy.Subscriber("/husky_velocity_controller/odom", Odometry, viso_callback)
-	rospy.Subscriber("/husky_velocity_controller/cmd_vel", Twist, getCmd2)
-	# rospy.Subscriber("/cmd_vel", TwistStamped, getCmd)
+	rospy.Subscriber("/cmd_vel_stamped", TwistStamped, getCmd)
 	rospy.Subscriber("/imu/data", Imu, imu_callback)
 	rospy.Timer(rospy.Duration(t), loop)
 	rospy.spin()
 
 if __name__ == '__main__':
     ekf()
-
 
 
 

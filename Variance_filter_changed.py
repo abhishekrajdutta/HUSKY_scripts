@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 # Author : Abhishek Raj Dutta
 # Date :22/11/2106
@@ -13,7 +14,7 @@ from nav_msgs.msg import Odometry
 import math
 import numpy as np
 
-pub=rospy.Publisher("/odometry/filtered/self",Odometry,queue_size=10)
+pub=rospy.Publisher('/odometry/filtered/self',Odometry,queue_size=10)
 br = tf.TransformBroadcaster()
 odom=Odometry()
 imu=Imu()
@@ -29,13 +30,13 @@ ImuYawCov=0.15707963267948966
 yawCov=10
 cmd = np.array ([(0.0,0.0),(0.0,0.0)])
 yaw = np.array ([0.0,0.0])
-meas = np.array ([(0.0,0.0),(0.0,0.0)])
-# meas = np.array ([0.0,0.0])
+meas = np.array ([0.0,0.0])
 inp = np.array ([0.0,0.0])
 odomEKF = np.array ([0.0,0.0,0.0])
 pred = np.array ([0.0,0.0,0.0])
+prevVx=0.0
 #frequency = 5 Hz
-f=5.0
+f=50.0
 t=1/f
 
 
@@ -54,6 +55,12 @@ def viso_callback(msg):
     yawViso = euler[2]
     vYawViso=msg.twist.twist.angular.z;
     vX=msg.twist.twist.linear.x;
+
+    # if vX > 1 :
+    #     vX = prevVx
+    # else :
+    #     prevVx = vX
+        
     
     
 
@@ -73,11 +80,6 @@ def imu_callback(msg):
     
 
 def getCmd(msg):
-    global cmd
-    cmd[1][0] = msg.twist.linear.x
-    cmd[1][1] = msg.twist.angular.z
-
-def getCmd2(msg):
     global cmd
     cmd[1][0] = msg.linear.x
     cmd[1][1] = msg.angular.z
@@ -106,12 +108,12 @@ def send():
     
 
     pub.publish(odomOut)
-    print odomEKF
+    # print odomEKF
 
 
 def loop(event):
     print 'Timer called at ' + str(event.current_real)
-    global i,yawImu,yawImu1,vYawViso,vYawCov,ImuYawCov,yaw,yawCov,vX,odomEKF,pred,cmd, inp
+    global i,yawImu,yawImu1,vYawViso,vYawCov,ImuYawCov,yaw,yawCov,vX,odomEKF,pred,cmd, inp, prevVx
     if i==0:
         yawImu1=yawImu
         i=1
@@ -127,48 +129,44 @@ def loop(event):
     vYaw=(yaw[1]-yaw[0])*f
     yaw[0]=yaw[1]
 
-    meas[1][0]=vX
-    meas[1][1]=vYaw
 
-    if meas[1][0]>1.0:
-        meas[1][0]=meas[0][0]
-        meas[1][1]=meas[0][1]
+    meas[1]=vYaw
+    if vX<1:
+        meas[0]=vX
+        prevVx = vX
+    else: 
+        meas[0]=prevVx
 
-    meas[0][0]=meas[1][0]
-    meas[0][1]=meas[1][1]
-
-
-
-    vConCov=0.001
-    wConCov=0.01
+    vConCov=0.0001
+    wConCov=0.001
 
     vMeasCov=0.002
     wMeasCov=yawCov*f
 
-    inp[0]=(((vConCov)**2)*meas[1][0]+((vMeasCov)**2)*cmd[0][0])/(((vConCov)**2)+((vMeasCov)**2))
-    inp[1]=(((wConCov)**2)*meas[1][1]+((wMeasCov)**2)*cmd[0][1])/(((wConCov)**2)+((wMeasCov)**2))
+    inp[0]=(((vConCov)**2)*meas[0]+((vMeasCov)**2)*cmd[0][0])/(((vConCov)**2)+((vMeasCov)**2))
+    inp[1]=(((wConCov)**2)*meas[1]+((wMeasCov)**2)*cmd[0][1])/(((wConCov)**2)+((wMeasCov)**2))
 
     if cmd[0][0]>0.000001 or cmd[0][1]>0.000001:
-    	
-    	if cmd[0][1]>0.000001:
-	       	pred[0]=-(inp[0]/inp[1])*np.sin(odomEKF[2])+(inp[0]/inp[1])*np.sin(odomEKF[2]+inp[1]*t)
-	    	pred[1]=(inp[0]/inp[1])*np.cos(odomEKF[2])-(inp[0]/inp[1])*np.cos(odomEKF[2]+inp[1]*t)
-	    	pred[2]=inp[1]*t
+        
+        if cmd[0][1]>0.000001:
+            pred[0]=-(inp[0]/inp[1])*np.sin(odomEKF[2])+(inp[0]/inp[1])*np.sin(odomEKF[2]+inp[1]*t)
+            pred[1]=(inp[0]/inp[1])*np.cos(odomEKF[2])-(inp[0]/inp[1])*np.cos(odomEKF[2]+inp[1]*t)
+            pred[2]=inp[1]*t
 
-    	else:
-    		pred[0]=inp[0]*t*np.cos(yaw[0])
-    		pred[1]=inp[0]*t*np.sin(yaw[1])
-    		#pred[1]=(inp[0]/inp[1])*np.cos(odomEKF[2])-(inp[0]/inp[1])*np.cos(odomEKF[2]+inp[1]*t)
-    		#pred[1]=(meas[0]/meas[1])*np.cos(odomEKF[2])-(meas[0]/meas[1])*np.cos(odomEKF[2]+meas[1]*t)
-    		pred[2]=meas[1][1]*t
+        else:
+            pred[0]=inp[0]*t*np.cos(yaw[0])
+            pred[1]=inp[0]*t*np.sin(yaw[1])
+            #pred[1]=(inp[0]/inp[1])*np.cos(odomEKF[2])-(inp[0]/inp[1])*np.cos(odomEKF[2]+inp[1]*t)
+            #pred[1]=(meas[0]/meas[1])*np.cos(odomEKF[2])-(meas[0]/meas[1])*np.cos(odomEKF[2]+meas[1]*t)
+            pred[2]=meas[1]*t
 
-    	odomEKF=odomEKF+pred
+        odomEKF=odomEKF+pred
 
     
 
     cmd[0][0]=cmd[1][0]
     cmd[0][1]=cmd[1][1]
-
+    rospy.loginfo(cmd)
     #print odomEKF   
     send()
 
@@ -177,14 +175,13 @@ def loop(event):
 
 
 def ekf():
-	rospy.init_node('ekf_node')
-	rospy.Subscriber("/stereo_odometer/odometry", Odometry, viso_callback)
-	# rospy.Subscriber("/husky_velocity_controller/odom", Odometry, viso_callback)
-	rospy.Subscriber("/husky_velocity_controller/cmd_vel", Twist, getCmd2)
-	# rospy.Subscriber("/cmd_vel", TwistStamped, getCmd)
-	rospy.Subscriber("/imu/data", Imu, imu_callback)
-	rospy.Timer(rospy.Duration(t), loop)
-	rospy.spin()
+    rospy.init_node('ekf_node')
+    rospy.Subscriber("/stereo_odometer/odometry", Odometry, viso_callback)
+    # rospy.Subscriber("/husky_velocity_controller/odom", Odometry, viso_callback)
+    rospy.Subscriber("/cmd_vel", Twist, getCmd)
+    rospy.Subscriber("/imu/data", Imu, imu_callback)
+    rospy.Timer(rospy.Duration(t), loop)
+    rospy.spin()
 
 if __name__ == '__main__':
     ekf()
